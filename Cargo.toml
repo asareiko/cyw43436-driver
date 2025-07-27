@@ -1,0 +1,49 @@
+[package]
+name = "cyw43436-driver"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "Bare-metal WiFi driver for CYW43436 chip (Raspberry Pi Zero 2 W)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/cyw43436-driver"
+documentation = "https://docs.rs/cyw43436-driver"
+keywords = ["wifi", "embedded", "no-std", "raspberry-pi", "cyw43436"]
+categories = ["embedded", "network-programming", "no-std"]
+readme = "README.md"
+
+[lib]
+name = "cyw43436_driver"
+path = "src/lib.rs"
+
+[[example]]
+name = "basic_connection"
+path = "examples/basic_connection.rs"
+
+[dependencies]
+# Core embedded dependencies
+embedded-hal = { version = "1.0", default-features = false }
+embedded-hal-nb = { version = "1.0", default-features = false }
+nb = { version = "1.1", default-features = false }
+
+# Memory management for bare metal
+heapless = { version = "0.8", default-features = false }
+bitflags = { version = "2.4", default-features = false }
+
+# Logging and debugging
+defmt = { version = "0.3", optional = true }
+
+# Embassy async runtime (optional)
+embassy-time = { version = "0.3", default-features = false, optional = true }
+embassy-sync = { version = "0.6", default-features = false, optional = true }
+
+[features]
+default = ["defmt"]
+defmt = ["dep:defmt"]
+embassy = ["dep:embassy-time", "dep:embassy-sync"]
+std = [] # For testing on host
+
+[profile.release]
+lto = true
+opt-level = "s"  # Optimize for size
+panic = "abort"
+codegen-units = 1
