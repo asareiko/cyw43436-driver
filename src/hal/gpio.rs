@@ -55,17 +55,17 @@ pub enum GpioPull {
 bitflags! {
     /// GPIO pin numbers for CYW43436 control
     pub struct CywGpioPins: u32 {
-        /// WiFi power enable (example pin - adjust based on actual hardware)
-        const WIFI_PWR_EN = 1 << 32;
-        /// WiFi reset pin
-        const WIFI_RESET = 1 << 33;
+        /// WiFi power enable (GPIO 2 - example, adjust based on actual hardware)
+        const WIFI_PWR_EN = 1 << 2;
+        /// WiFi reset pin (GPIO 3)
+        const WIFI_RESET = 1 << 3;
         /// SDIO data pins (GPIO 34-39 for SDIO on EMMC2)
-        const SDIO_DAT0 = 1 << 34;
-        const SDIO_DAT1 = 1 << 35;
-        const SDIO_DAT2 = 1 << 36;
-        const SDIO_DAT3 = 1 << 37;
-        const SDIO_CLK = 1 << 38;
-        const SDIO_CMD = 1 << 39;
+        const SDIO_DAT0 = 1 << 22;  // GPIO 22
+        const SDIO_DAT1 = 1 << 23;  // GPIO 23
+        const SDIO_DAT2 = 1 << 24;  // GPIO 24
+        const SDIO_DAT3 = 1 << 25;  // GPIO 25
+        const SDIO_CLK = 1 << 26;   // GPIO 26
+        const SDIO_CMD = 1 << 27;   // GPIO 27
     }
 }
 
@@ -151,78 +151,114 @@ impl GpioController {
             return;
         }
 
-        // Set pull-up/down control
+        // BCM2710 pull-up/down control sequence
         let pud_reg = unsafe { Mmio::<u32>::new(self.base + GPPUD) };
+        let clk_reg = unsafe { 
+            if pin < 32 { 
+                Mmio::<u32>::new(self.base + GPPUDCLK0) 
+            } else { 
+                Mmio::<u32>::new(self.base + GPPUDCLK1) 
+            }
+        };
+
+        // Step 1: Write to GPPUD to set the required control signal
         pud_reg.write(pull as u32);
-
-        // Wait 150 cycles (required by BCM2710)
+        
+        // Step 2: Wait 150 cycles (this provides the required setup time)
         for _ in 0..150 {
-            core::hint::spin_loop();
+            unsafe { core::arch::asm!("nop") };
         }
-
-        // Enable pull-up/down control for the pin
-        let clk_reg_offset = if pin < 32 { GPPUDCLK0 } else { GPPUDCLK1 };
+        
+        // Step 3: Write to GPPUDCLK0/1 to clock the control signal into the GPIO pads
         let bit = pin % 32;
-        let clk_reg = unsafe { Mmio::<u32>::new(self.base + clk_reg_offset) };
         clk_reg.write(1 << bit);
-
-        // Wait 150 cycles
+        
+        // Step 4: Wait 150 cycles (this provides the required hold time)
         for _ in 0..150 {
-            core::hint::spin_loop();
+            unsafe { core::arch::asm!("nop") };
         }
-
-        // Clear the control signal
+        
+        // Step 5: Write to GPPUD to remove the control signal
         pud_reg.write(0);
+        
+        // Step 6: Write to GPPUDCLK0/1 to remove the clock
         clk_reg.write(0);
     }
 
-    /// Configure SDIO pins for EMMC2 controller
+    /// Configure SDIO pins for CYW43436 communication
     pub fn configure_sdio_pins(&self) {
-        // Configure SDIO pins for Alt3 function (EMMC2 on BCM2710)
-        // GPIO 34-39 are used for SDIO on EMMC2
-        for pin in 34..=39 {
-            self.set_function(pin, GpioFunction::Alt3);
-            self.set_pull(pin, GpioPull::PullUp);
-        }
+        // Configure SDIO pins (GPIO 22-27) for EMMC2 Alt3 function
+        self.set_function(22, GpioFunction::Alt3); // SDIO DAT0
+        self.set_function(23, GpioFunction::Alt3); // SDIO DAT1
+        self.set_function(24, GpioFunction::Alt3); // SDIO DAT2
+        self.set_function(25, GpioFunction::Alt3); // SDIO DAT3
+        self.set_function(26, GpioFunction::Alt3); // SDIO CLK
+        self.set_function(27, GpioFunction::Alt3); // SDIO CMD
+
+        // Set appropriate pull resistors for SDIO pins
+        self.set_pull(22, GpioPull::PullUp); // DAT0 - pull up
+        self.set_pull(23, GpioPull::PullUp); // DAT1 - pull up
+        self.set_pull(24, GpioPull::PullUp); // DAT2 - pull up
+        self.set_pull(25, GpioPull::PullUp); // DAT3 - pull up
+        self.set_pull(26, GpioPull::None);   // CLK - no pull
+        self.set_pull(27, GpioPull::PullUp); // CMD - pull up
     }
 
     /// Initialize CYW43436 power control pins
     pub fn init_cyw43436_power_pins(&self) {
-        // Note: Actual pin numbers depend on the specific board design
-        // This is a template - adjust pin numbers based on actual hardware
+        // Configure power enable pin (example: GPIO 2)
+        self.set_function(2, GpioFunction::Output);
+        self.set_low(2); // Start with power off
         
-        // Configure power enable pin as output
-        // self.set_function(POWER_PIN, GpioFunction::Output);
-        // self.set_low(POWER_PIN); // Start with WiFi powered off
-        
-        // Configure reset pin as output  
-        // self.set_function(RESET_PIN, GpioFunction::Output);
-        // self.set_low(RESET_PIN); // Hold in reset initially
+        // Configure reset pin (example: GPIO 3)
+        self.set_function(3, GpioFunction::Output);
+        self.set_low(3); // Start in reset state
     }
 
     /// Power on the CYW43436 chip
     pub fn power_on_cyw43436(&self) {
-        // Power sequence for CYW43436
-        // 1. Enable power
-        // 2. Wait for stabilization
-        // 3. Release reset
+        // Release reset first
+        self.set_high(3);
         
-        // Implementation depends on actual hardware connections
-        defmt::info!("Powering on CYW43436...");
+        // Small delay
+        for _ in 0..1000 {
+            unsafe { core::arch::asm!("nop") };
+        }
         
-        // Example power-on sequence (adjust for actual hardware)
-        // self.set_high(POWER_PIN);
-        // Wait for power stabilization
-        // for _ in 0..100000 { core::hint::spin_loop(); }
-        // self.set_high(RESET_PIN);
+        // Enable power
+        self.set_high(2);
+        
+        // Wait for power to stabilize
+        for _ in 0..10000 {
+            unsafe { core::arch::asm!("nop") };
+        }
     }
 
     /// Power off the CYW43436 chip
     pub fn power_off_cyw43436(&self) {
-        defmt::info!("Powering off CYW43436...");
+        // Disable power
+        self.set_low(2);
         
-        // Example power-off sequence (adjust for actual hardware)
-        // self.set_low(RESET_PIN);
-        // self.set_low(POWER_PIN);
+        // Assert reset
+        self.set_low(3);
+    }
+
+    /// Reset the CYW43436 chip
+    pub fn reset_cyw43436(&self) {
+        // Assert reset
+        self.set_low(3);
+        
+        // Hold reset for sufficient time
+        for _ in 0..50000 {
+            unsafe { core::arch::asm!("nop") };
+        }
+        
+        // Release reset
+        self.set_high(3);
+        
+        // Wait for chip to come out of reset
+        for _ in 0..10000 {
+            unsafe { core::arch::asm!("nop") };
+        }
     }
 }

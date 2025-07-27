@@ -9,7 +9,7 @@ pub struct Mmio<T> {
 
 impl<T> Mmio<T> {
     /// Create a new MMIO register at the given address
-    ///
+    /// 
     /// # Safety
     /// The caller must ensure the address is valid and points to a hardware register
     pub const unsafe fn new(addr: u32) -> Self {

@@ -1,5 +1,5 @@
 ﻿//! Hardware Abstraction Layer for BCM2710 (Raspberry Pi Zero 2 W)
-//!
+//! 
 //! This module provides low-level hardware access for the BCM2710 SoC,
 //! including GPIO, SDIO/EMMC2 controller, and other peripherals.
 

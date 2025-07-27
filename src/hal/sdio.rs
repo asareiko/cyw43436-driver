@@ -1,5 +1,5 @@
 ﻿//! SDIO controller for CYW43436 WiFi chip on BCM2710
-//! 
+//!
 //! This module implements the SDIO interface using the BCM2710's EMMC2 controller
 //! to communicate with the CYW43436 WiFi chip.
 
@@ -7,7 +7,6 @@ use super::mmio::Mmio;
 use super::timer::SystemTimer;
 use super::EMMC2_BASE;
 use bitflags::bitflags;
-use core::mem;
 
 /// EMMC2 register offsets for SDIO communication
 const EMMC2_ARG2: u32 = 0x00;
@@ -39,6 +38,7 @@ const EMMC2_SLOTISR_VER: u32 = 0xFC;
 
 bitflags! {
     /// SDIO command flags
+    #[derive(Debug, Clone, Copy)]
     pub struct SdioCommandFlags: u32 {
         /// Response expected
         const RESP_EXPECTED = 1 << 0;
@@ -58,7 +58,7 @@ bitflags! {
         const AUTO_CMD12 = 1 << 7;
         /// Block count enable
         const BLOCK_CNT_EN = 1 << 8;
-        /// DMA enable  
+        /// DMA enable
         const DMA_EN = 1 << 9;
     }
 }
@@ -152,7 +152,7 @@ pub struct SdioResponse {
 }
 
 /// SDIO controller errors
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, defmt::Format)]
 pub enum SdioError {
     Timeout,
     CrcError,
@@ -216,10 +216,10 @@ impl SdioController {
     /// Reset the SDIO controller
     fn reset(&self) {
         let control1 = unsafe { Mmio::<u32>::new(self.base + EMMC2_CONTROL1) };
-        
+
         // Software reset for all
         control1.write(0x07000000);
-        
+
         // Wait for reset to complete
         let timeout_start = self.timer.get_time_us();
         while control1.read() & 0x07000000 != 0 {
@@ -241,10 +241,10 @@ impl SdioController {
     /// Set SDIO clock frequency
     fn set_clock(&mut self, freq_hz: u32) -> Result<(), SdioError> {
         let control1 = unsafe { Mmio::<u32>::new(self.base + EMMC2_CONTROL1) };
-        
+
         // Disable clock
         control1.modify(|val| val & !(1 << 2));
-        
+
         // Wait for clock to stop
         let timeout_start = self.timer.get_time_us();
         while control1.read() & (1 << 3) != 0 {
@@ -310,7 +310,7 @@ impl SdioController {
         let irpt_mask = unsafe { Mmio::<u32>::new(self.base + EMMC2_IRPT_MASK) };
 
         // Enable basic interrupts
-        let interrupts = Emmc2Interrupt::CMD_DONE 
+        let interrupts = Emmc2Interrupt::CMD_DONE
             | Emmc2Interrupt::DATA_DONE
             | Emmc2Interrupt::BLOCK_GAP
             | Emmc2Interrupt::WRITE_RDY
@@ -416,7 +416,7 @@ impl SdioController {
             if int_status.contains(Emmc2Interrupt::ERR) {
                 // Clear interrupt
                 interrupt.write(int_status.bits());
-                
+
                 if int_status.contains(Emmc2Interrupt::CMD_TIMEOUT) {
                     return Err(SdioError::Timeout);
                 }
@@ -474,7 +474,7 @@ impl SdioController {
     pub fn read_data(&self, buffer: &mut [u8]) -> Result<(), SdioError> {
         let data_reg = unsafe { Mmio::<u32>::new(self.base + EMMC2_DATA) };
         let interrupt = unsafe { Mmio::<u32>::new(self.base + EMMC2_INTERRUPT) };
-        
+
         let mut offset = 0;
         let timeout_start = self.timer.get_time_us();
 
@@ -486,7 +486,7 @@ impl SdioController {
                 // Check for errors
                 if int_status.contains(Emmc2Interrupt::ERR) {
                     interrupt.write(int_status.bits());
-                    
+
                     if int_status.contains(Emmc2Interrupt::DATA_TIMEOUT) {
                         return Err(SdioError::DataTimeout);
                     }
@@ -547,7 +547,7 @@ impl SdioController {
     pub fn write_data(&self, buffer: &[u8]) -> Result<(), SdioError> {
         let data_reg = unsafe { Mmio::<u32>::new(self.base + EMMC2_DATA) };
         let interrupt = unsafe { Mmio::<u32>::new(self.base + EMMC2_INTERRUPT) };
-        
+
         let mut offset = 0;
         let timeout_start = self.timer.get_time_us();
 
@@ -559,7 +559,7 @@ impl SdioController {
                 // Check for errors
                 if int_status.contains(Emmc2Interrupt::ERR) {
                     interrupt.write(int_status.bits());
-                    
+
                     if int_status.contains(Emmc2Interrupt::DATA_TIMEOUT) {
                         return Err(SdioError::DataTimeout);
                     }
